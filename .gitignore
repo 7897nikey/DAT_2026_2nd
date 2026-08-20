@@ -9,13 +9,12 @@
 # ============================================
 # 파생 데이터 (원본 복원 가능하므로 동일 취급)
 # ============================================
-inventory/*.parquet
-inventory/*.csv
-export/
-*.parquet
+inventory/*
+selection/*
+export/*
 
-# 단, 사람이 읽는 요약본은 커밋
 !inventory/diagnostics.md
+!selection/codebook_ab.md
 
 # ============================================
 # LLM 응답 캐시 / API 키
