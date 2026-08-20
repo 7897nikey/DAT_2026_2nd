@@ -31,7 +31,7 @@ uv run kgss_codebook.py --pdf "2003-2025_KGSS_codebook.pdf" `
 
 # 3. (선택) 사람이 읽는 코드북/회차 데이터 변환
 uv run kgss_export.py --sav "2003-2025_KGSS_kor_public.sav" --year 2023
-
+```
 ## 주요 산출물
 
 | 파일 | 내용 |
