@@ -9,7 +9,7 @@ LLM에 인구통계 페르소나를 프롬프트로 부여해 한국 여론조�
 KOSSDA(kossda.snu.ac.kr)에서 개별 신청 후 프로젝트 루트에 둘 것.
 
 - `2003-2025_KGSS_kor_public.sav`
-- `2003-2025_KGSS_Codebook.pdf`
+- `2003-2025_KGSS_codebook.pdf`
 
 ## 환경 구성
 
@@ -22,19 +22,15 @@ uv pip install -r requirements.txt
 
 ```powershell
 # 1. 데이터 구조 진단 (결측 4층 분리, eta2, 셀 크기)
-uv run kgss_inventory.py --sav "2003-2025_KGSS_kor_public_v2.sav" `
+uv run kgss_inventory.py --sav "2003-2025_KGSS_kor_public.sav" `
     --out .\inventory --target-year 2023
 
 # 2. 코드북에서 설문 원문 추출 + A/B 분할표본 분석
-uv run kgss_codebook.py --pdf "2003-2025_KGSS_Codebook_v5.pdf" `
+uv run kgss_codebook.py --pdf "2003-2025_KGSS_codebook.pdf" `
     --inv .\inventory --out .\selection
 
 # 3. (선택) 사람이 읽는 코드북/회차 데이터 변환
-uv run kgss_export.py --sav "2003-2025_KGSS_kor_public_v2.sav" --year 2023
-
-# 4. (선택) 3인 태깅용 문항 선정 작업지
-uv run kgss_shortlist.py --inv .\inventory --out .\selection --year 2023
-```
+uv run kgss_export.py --sav "2003-2025_KGSS_kor_public.sav" --year 2023
 
 ## 주요 산출물
 
