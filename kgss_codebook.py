@@ -1,10 +1,10 @@
 r"""
 KGSS 코드북 PDF 설문 원문 추출 + A/B 분할표본 효과 분석
 
-.sav의 변수 라벨은 축약본이다. 실제 응답자가 들은 문장은 코드북에만 있다.
+.sav의 변수 라벨은 축약본이다. 실제 응답자가 들은 문장은 코드북에만 있으므로,
 페르소나 프롬프트에는 반드시 코드북 원문을 써야 한다.
 
-A/B 분할표본:
+A/B 분할표본
     2016년부터 홀수번호 가구는 A형, 짝수번호 가구는 B형 설문지를 받았다(조사실험).
     무작위 배정이므로 두 그룹의 인구 구성은 통계적으로 동일하고,
     응답 차이는 설문지 차이 때문이라고 인과적으로 말할 수 있다.
@@ -15,11 +15,15 @@ A/B 분할표본:
       - 목록 항목 추가:   RUNELECT(페미니스트), DISCRNUM(여성)
 
     순서 역전 쌍은 B를 A의 코딩으로 재정렬한 뒤 두 분포를 비교해
-    '인간에게서 나타나는 응답 순서 효과'의 크기를 산출한다.
-    이 값이 LLM 검증의 기준선이 된다.
+    인간에게서 나타나는 응답 순서 효과의 크기를 산출한다.
+    이 값이 LLM의 형식 민감도를 평가할 유일한 인간 기준선이다.
 
-주의: 코드북 표의 백분율은 가중치(FINALWT)가 적용된 값이다.
-      우리 계산(비가중)과 어긋나면 이것을 먼저 의심할 것.
+주의
+    코드북 표의 백분율은 가중치(FINALWT)가 적용된 값이다.
+    우리 계산(비가중)과 어긋나면 이것을 먼저 의심할 것.
+
+    variables.csv의 결측 코드 열 이름은 버전에 따라 다르다.
+    (dk/inap -> legacy_dk/legacy_inap). 양쪽 다 읽도록 처리한다.
 
 사용법:
     uv pip install pdfplumber
@@ -41,17 +45,44 @@ import pandas as pd
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-STRUCTURAL = {-8.0, -1.0}
+IAP_CODE = -1.0
+DK_CODE = -8.0
+STRUCTURAL = {IAP_CODE, DK_CODE}
+
 FORM_PAT = re.compile(r"\(\s*([AB])\s*형\s*\)")
 BLOCK_PAT = re.compile(
-    r"표\s*(\d+)\s*([^\n]*?)\n(?:\[설문\s*문항\](.*?))?\[변수명\]\s*(\S+)", re.S
-)
+    r"표\s*(\d+)\s*([^\n]*?)\n(?:\[설문\s*문항\](.*?))?\[변수명\]\s*(\S+)", re.S)
+
+# variables.csv 버전별 열 이름
+DK_COLS = ["legacy_dk", "dk"]
+INAP_COLS = ["legacy_inap", "inap"]
 
 
 def norm(s: str) -> str:
     return " ".join((s or "").split())
 
 
+def pick_col(dfr: pd.DataFrame, names: list[str]) -> str | None:
+    for n in names:
+        if n in dfr.columns:
+            return n
+    return None
+
+
+def get_codes(info: pd.DataFrame, var: str, col: str | None) -> list[float]:
+    """결측 코드 열을 안전하게 읽는다. 열이 없거나 값이 비면 빈 리스트."""
+    if col is None or var not in info.index:
+        return []
+    raw = info.at[var, col]
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    try:
+        return [float(x) for x in json.loads(raw)]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------- 텍스트 추출
 def extract_with_pdftotext(pdf: str, out: Path) -> bool:
     exe = shutil.which("pdftotext")
     if not exe:
@@ -150,8 +181,14 @@ def main():
     print("[2/5] 데이터 로드 및 이름 대응")
     df = pd.read_parquet(inv / "kgss_clean.parquet")
     vt = pd.read_csv(inv / "variables.csv")
-    cols = set(df.columns)
+    dk_col = pick_col(vt, DK_COLS)
+    inap_col = pick_col(vt, INAP_COLS)
+    print(f"      결측 코드 열: dk={dk_col} / inap={inap_col}")
+    if dk_col is None or inap_col is None:
+        print("      경고: 결측 코드 열을 찾지 못했습니다. "
+              "선택지 표시가 부정확할 수 있습니다.")
 
+    cols = set(df.columns)
     name_map = {v: resolve_name(v, cols) for v in recs}
     renamed = {v: c for v, c in name_map.items() if c and c != v}
     print(f"      이름 변경 {len(renamed):,}개 / 대응 실패 "
@@ -164,14 +201,15 @@ def main():
     vt["설문원문"] = vt["var"].map(lambda c: recs.get(rev.get(c, c), {}).get("설문원문", ""))
     vt["표제목"] = vt["var"].map(lambda c: recs.get(rev.get(c, c), {}).get("표제목", ""))
     vt["선택지"] = vt["value_labels"].map(
-        lambda s: fmt_options(json.loads(s)) if isinstance(s, str) else ""
-    )
+        lambda s: fmt_options(json.loads(s)) if isinstance(s, str) else "")
     print(f"      원문 없음 {int((vt['설문원문'] == '').sum()):,}개 / {len(vt):,}개")
-    keep = [c for c in ["var", "label", "표제목", "설문원문", "선택지",
-                        "measure", "ordinal_guess", "dk", "inap"] if c in vt.columns]
+
+    keep = [c for c in ["var", "label", "표제목", "설문원문", "선택지", "measure",
+                        "ordinal_guess", "battery", "is_ab", dk_col, inap_col]
+            if c and c in vt.columns]
     vt[keep].to_csv(outdir / "variables_worded.csv", index=False, encoding="utf-8-sig")
 
-    print("[3/5] SAMPLEAB 실제 코드 확인")
+    print("[3/5] SAMPLEAB 실제 코드")
     L = ["# 설문 원문 및 A/B 분할표본\n"]
     L.append("> 코드북 표의 백분율은 가중치(FINALWT)가 적용된 값입니다. "
              "아래 인원수는 비가중 실측치이므로 코드북과 소수점 차이가 납니다.\n")
@@ -184,7 +222,7 @@ def main():
         for yr, r in ct.iterrows():
             L.append(f"| {int(yr)} | " + " | ".join(f"{int(x):,}" for x in r) + " |")
         L.append("")
-        print(f"      SAMPLEAB 실제 값: {sorted(ct.columns.tolist())}")
+        print(f"      실제 값: {sorted(ct.columns.tolist())}")
 
     print("[4/5] A/B 쌍 분석")
     info = vt.set_index("var")
@@ -210,14 +248,17 @@ def main():
         opts = {}
         for side, cv, cbv in (("A", ca, d["A"]), ("B", cb, d["B"])):
             row[f"{side}원문"] = recs[cbv]["설문원문"]
-            vl = json.loads(info.at[cv, "value_labels"]) if cv in info.index else {}
-            dk = json.loads(info.at[cv, "dk"]) if cv in info.index else []
-            inap = json.loads(info.at[cv, "inap"]) if cv in info.index else []
-            opts[side] = substantive(vl, dk, inap)
+            vl = (json.loads(info.at[cv, "value_labels"])
+                  if cv in info.index and isinstance(info.at[cv, "value_labels"], str)
+                  else {})
+            opts[side] = substantive(vl,
+                                     get_codes(info, cv, dk_col),
+                                     get_codes(info, cv, inap_col))
             row[f"{side}선택지"] = fmt_options(vl)
-            yrs = [int(y) for y in years if df.loc[df["YEAR"] == y, cv].notna().any()]
+            yrs = [int(y) for y in years
+                   if cv in df.columns and df.loc[df["YEAR"] == y, cv].notna().any()]
             row[f"{side}연도"] = ", ".join(map(str, yrs))
-            row[f"{side}_n"] = int(df[cv].notna().sum())
+            row[f"{side}_n"] = int(df[cv].notna().sum()) if cv in df.columns else 0
 
         row["문구다름"] = row["A원문"] != row["B원문"]
         row["선택지다름"] = row["A선택지"] != row["B선택지"]
@@ -263,11 +304,10 @@ def main():
             md = "" if pd.isna(r["효과_평균차"]) else f"{r['효과_평균차']:+.4f}"
             L.append(f"| `{r['쌍']}` | {what} | {r['A연도']} | {r['B연도']} "
                      f"| {r['A_n']:,} | {r['B_n']:,} | {tv} | {md} |")
-        L.append("\n> TV거리는 선택지 순서를 뒤집었을 때 인간 응답 분포가 실제로 이동한 "
+        L.append("\n> TV거리는 선택지 순서를 뒤집었을 때 인간 응답 분포가 이동한 "
                  "확률질량의 비율입니다. 0.05면 약 5%의 응답자가 순서 때문에 다르게 "
                  "답했다는 뜻입니다. LLM이 이 크기와 방향을 재현하는지가 검증 대상입니다.\n")
 
-        # 순서 효과 방향 일관성
         rev_df = abdf[abdf["순서역전"] & abdf["효과_평균차"].notna()]
         if len(rev_df) >= 3:
             pos = int((rev_df["효과_평균차"] > 0).sum())
@@ -277,8 +317,9 @@ def main():
                      f"(범위 {rev_df['효과_TV거리'].min():.3f}~"
                      f"{rev_df['효과_TV거리'].max():.3f})\n")
             L.append("> 평균차가 한 방향으로 몰리면 우연이 아닌 체계적 순서 효과입니다. "
-                     "대면 면접에서는 뒤에 제시된 선택지를 고르는 최신 효과(recency)가 "
-                     "나타나는 것으로 알려져 있습니다.\n")
+                     "다만 KGSS는 조사원이 읽어주면서 보기카드로 함께 보여주는 혼합 "
+                     "방식이라, 청각 제시의 최신 효과와 시각 제시의 초두 효과 중 "
+                     "어느 쪽을 예측할지 자명하지 않습니다. 경험적 발견으로 서술해야 합니다.\n")
 
         for _, r in abdf.iterrows():
             L.append(f"### `{r['쌍']}`\n")
