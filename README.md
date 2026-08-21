@@ -6,10 +6,10 @@ LLM에 인구통계 페르소나를 프롬프트로 부여해 한국 여론조�
 ## 데이터
 
 원본 파일은 저장소에 포함되지 않는다.
-KOSSDA(kossda.snu.ac.kr)에서 개별 신청 후 프로젝트 루트에 둘 것.
+kgss.skku.edu에서 다운로드 후 프로젝트 루트에 둘 것.
 
-- `2003-2025_KGSS_kor_public.sav`
-- `2003-2025_KGSS_codebook.pdf`
+- `2003-2025_KGSS_kor_public_v2.sav`
+- `2003-2025_KGSS_Codebook_v5.pdf`
 
 ## 환경 구성
 

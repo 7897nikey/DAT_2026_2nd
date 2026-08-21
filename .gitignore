@@ -56,3 +56,5 @@ codebook_raw.txt
 selection/
 *.pdf
 /ì‚¬ì „ìŠ¤í„°ë””
+# °³ÀÎ Å½»ö¿ë ½ºÅ©¸³Æ®
+load.py
